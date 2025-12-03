@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>QiuQiu Mabar Simple</title>
+  <title>QiuQiu Mabar</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -19,10 +19,10 @@
 
   <div class="section">
     <h3>Room</h3>
-    <input id="roomIdInput" placeholder="ID room (misal: abc123)">
+    <input id="roomIdInput" placeholder="ID room">
     <button id="createRoomBtn">Buat Room</button>
     <button id="joinRoomBtn">Join Room</button>
-    <p>Room saat ini: <span id="currentRoomText">-</span></p>
+    <p>Room aktif: <span id="currentRoomText">-</span></p>
   </div>
 
   <div class="section layout">
@@ -32,7 +32,7 @@
     </div>
 
     <div class="col">
-      <h3>Taruhan & Kartu</h3>
+      <h3>Taruhan</h3>
       <input id="betInput" type="number" min="10" placeholder="Jumlah taruhan">
       <button id="betBtn">Pasang Taruhan</button>
       <p id="betStatus">Belum bertaruh</p>
@@ -50,17 +50,22 @@
   </div>
 </div>
 
-<!-- SCRIPT UTAMA (SEMUA LOGIC DI SINI) -->
+<!-- SCRIPT UTAMA -->
 <script type="module">
+  // ========================================
+  // FIREBASE
+  // ========================================
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { 
-    getDatabase, ref, set, update, onValue, get, push 
+    getDatabase, ref, set, update, get, push, onValue 
   } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
   import {
-    getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged
+    getAuth, GoogleAuthProvider,
+    signInWithRedirect, getRedirectResult,
+    onAuthStateChanged
   } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-  // TODO: GANTI CONFIG INI DENGAN PROJECT FIREBASE KAMU SENDIRI
   const firebaseConfig = {
     apiKey: "AIzaSyD0-qqQiuQiuGameKeyXz123",
     authDomain: "qiuqiu-mabar.firebaseapp.com",
@@ -76,25 +81,24 @@
   const auth = getAuth(app);
   const provider = new GoogleAuthProvider();
 
-  // DOM
+  // ========================================
+  // ELEMENT DOM
+  // ========================================
   const loginBox = document.getElementById("loginBox");
   const gameBox = document.getElementById("gameBox");
   const loginBtn = document.getElementById("loginBtn");
   const userInfo = document.getElementById("userInfo");
   const pointsText = document.getElementById("pointsText");
-
   const roomIdInput = document.getElementById("roomIdInput");
   const createRoomBtn = document.getElementById("createRoomBtn");
   const joinRoomBtn = document.getElementById("joinRoomBtn");
   const currentRoomText = document.getElementById("currentRoomText");
-
   const playerList = document.getElementById("playerList");
   const betInput = document.getElementById("betInput");
   const betBtn = document.getElementById("betBtn");
   const betStatus = document.getElementById("betStatus");
   const startRoundBtn = document.getElementById("startRoundBtn");
   const cardsArea = document.getElementById("cardsArea");
-
   const chatBox = document.getElementById("chatBox");
   const chatInput = document.getElementById("chatInput");
   const sendChatBtn = document.getElementById("sendChatBtn");
@@ -102,28 +106,31 @@
   let currentUser = null;
   let currentRoom = null;
 
-  // LOGIN GOOGLE
-  loginBtn.onclick = async () => {
-    try {
-      const res = await signInWithPopup(auth, provider);
-      currentUser = res.user;
-      await afterLogin(currentUser);
-    } catch (e) {
-      alert("Login gagal: " + e.message);
-    }
+  // ========================================
+  // LOGIN GOOGLE (REDIRECT – 100% ANTI MENTAL)
+  // ========================================
+  loginBtn.onclick = () => {
+    signInWithRedirect(auth, provider);
   };
 
+  getRedirectResult(auth).then(async (result) => {
+    if (result) {
+      currentUser = result.user;
+      await afterLogin(currentUser);
+    }
+  });
+
   onAuthStateChanged(auth, async (user) => {
-    if (user) {
+    if (user && !currentUser) {
       currentUser = user;
       await afterLogin(user);
     }
   });
 
   async function afterLogin(user) {
-    // cek user di database
     const userRef = ref(db, "users/" + user.uid);
     const snap = await get(userRef);
+
     if (!snap.exists()) {
       await set(userRef, {
         uid: user.uid,
@@ -131,33 +138,33 @@
         points: 1000
       });
     }
-    const data = (await get(userRef)).val();
 
     loginBox.classList.add("hidden");
     gameBox.classList.remove("hidden");
 
+    const data = (await get(userRef)).val();
     userInfo.innerText = "Login sebagai: " + data.name;
     pointsText.innerText = "Poin: " + data.points;
   }
 
-  // CEK POIN TERKINI USER
   async function getMyPoints() {
     const snap = await get(ref(db, "users/" + currentUser.uid));
     return snap.val().points;
   }
 
-  async function refreshMyPoints() {
-    const pts = await getMyPoints();
-    pointsText.innerText = "Poin: " + pts;
+  async function refreshPoints() {
+    pointsText.innerText = "Poin: " + await getMyPoints();
   }
 
+  // ========================================
   // BUAT ROOM
+  // ========================================
   createRoomBtn.onclick = async () => {
-    const roomId = Math.random().toString(36).substring(2, 8);
-    currentRoom = roomId;
-    currentRoomText.innerText = roomId;
+    const id = Math.random().toString(36).substring(2, 8);
+    currentRoom = id;
+    currentRoomText.innerText = id;
 
-    await set(ref(db, "rooms/" + roomId), {
+    await set(ref(db, "rooms/" + id), {
       players: {
         [currentUser.uid]: {
           name: currentUser.displayName,
@@ -171,19 +178,20 @@
     listenRoom();
   };
 
+  // ========================================
   // JOIN ROOM
+  // ========================================
   joinRoomBtn.onclick = async () => {
-    const roomId = roomIdInput.value.trim();
-    if (!roomId) return alert("Masukkan ID room dulu");
+    const id = roomIdInput.value.trim();
+    if (!id) return alert("Isi ID room dulu.");
 
-    const roomRef = ref(db, "rooms/" + roomId);
-    const snap = await get(roomRef);
-    if (!snap.exists()) return alert("Room tidak ditemukan");
+    const snap = await get(ref(db, "rooms/" + id));
+    if (!snap.exists()) return alert("Room tidak ditemukan.");
 
-    currentRoom = roomId;
-    currentRoomText.innerText = roomId;
+    currentRoom = id;
+    currentRoomText.innerText = id;
 
-    await update(ref(db, "rooms/" + roomId + "/players"), {
+    await update(ref(db, "rooms/" + id + "/players"), {
       [currentUser.uid]: {
         name: currentUser.displayName,
         bet: 0,
@@ -194,14 +202,16 @@
     listenRoom();
   };
 
+  // ========================================
   // LISTEN ROOM (PEMAIN + CHAT)
+  // ========================================
   function listenRoom() {
     if (!currentRoom) return;
 
-    // pemain
     onValue(ref(db, "rooms/" + currentRoom + "/players"), snap => {
       const players = snap.val() || {};
       playerList.innerHTML = "";
+
       Object.values(players).forEach(p => {
         const li = document.createElement("li");
         li.innerText = p.name + " | Taruhan: " + (p.bet || 0);
@@ -213,7 +223,6 @@
       }
     });
 
-    // chat
     onValue(ref(db, "rooms/" + currentRoom + "/chat"), snap => {
       const logs = snap.val() || [];
       chatBox.innerHTML = "";
@@ -226,10 +235,10 @@
     });
   }
 
-  // KIRIM CHAT
   sendChatBtn.onclick = async () => {
     const text = chatInput.value.trim();
     if (!text || !currentRoom) return;
+
     await push(ref(db, "rooms/" + currentRoom + "/chat"), {
       sender: currentUser.displayName,
       text
@@ -237,43 +246,34 @@
     chatInput.value = "";
   };
 
-  // PASANG TARUHAN
+  // ========================================
+  // TARUHAN & RONDE
+  // ========================================
   betBtn.onclick = async () => {
-    if (!currentRoom) return alert("Belum di room");
-
     const bet = parseInt(betInput.value);
-    if (!bet || bet < 10) return alert("Minimal 10 poin");
+    if (!bet || bet < 10) return alert("Minimal 10 poin.");
 
-    const myPoints = await getMyPoints();
-    if (bet > myPoints) return alert("Poin tidak cukup");
+    const pts = await getMyPoints();
+    if (bet > pts) return alert("Poin tidak cukup.");
 
-    await update(ref(db, "rooms/" + currentRoom + "/players/" + currentUser.uid), {
+    await update(ref(db, `rooms/${currentRoom}/players/${currentUser.uid}`), {
       bet: bet
     });
 
     betStatus.innerText = "Taruhan kamu: " + bet;
   };
 
-  // MULAI RONDE
   startRoundBtn.onclick = async () => {
-    if (!currentRoom) return;
-
-    const playersSnap = await get(ref(db, "rooms/" + currentRoom + "/players"));
-    const players = playersSnap.val();
+    const snap = await get(ref(db, `rooms/${currentRoom}/players`));
+    const players = snap.val();
     const uids = Object.keys(players);
 
-    // cek semua sudah bet
-    for (let uid of uids) {
-      if (!players[uid].bet || players[uid].bet <= 0) {
-        alert("Semua pemain harus bertaruh dulu");
-        return;
-      }
-    }
+    for (let uid of uids)
+      if (!players[uid].bet) return alert("Semua pemain harus bertaruh.");
 
-    // bagi kartu
-    const updates = {};
+    const upd = {};
     uids.forEach(uid => {
-      updates[uid] = {
+      upd[uid] = {
         ...players[uid],
         cards: [
           randomCard(),
@@ -284,87 +284,76 @@
       };
     });
 
-    await update(ref(db, "rooms/" + currentRoom + "/players"), updates);
+    await update(ref(db, `rooms/${currentRoom}/players`), upd);
 
-    // hitung pemenang
-    setTimeout(() => calculateWinner(), 1500);
+    setTimeout(() => hitungPemenang(), 1500);
   };
 
-  // QIUQIU: HITUNG NILAI
-  function pairValue(c1, c2) {
+  // ========================================
+  // HITUNG MENANG QIUQIU
+  // ========================================
+
+  function nilaiPair(c1, c2) {
     const [a1, a2] = c1.split("|").map(Number);
     const [b1, b2] = c2.split("|").map(Number);
     return (a1 + a2 + b1 + b2) % 10;
   }
 
-  function bestValue(cards) {
-    const vals = [
-      pairValue(cards[0], cards[1]),
-      pairValue(cards[0], cards[2]),
-      pairValue(cards[0], cards[3]),
-      pairValue(cards[1], cards[2]),
-      pairValue(cards[1], cards[3]),
-      pairValue(cards[2], cards[3])
-    ];
-    return Math.max(...vals);
+  function nilaiTerbaik(cards) {
+    return Math.max(
+      nilaiPair(cards[0], cards[1]),
+      nilaiPair(cards[0], cards[2]),
+      nilaiPair(cards[0], cards[3]),
+      nilaiPair(cards[1], cards[2]),
+      nilaiPair(cards[1], cards[3]),
+      nilaiPair(cards[2], cards[3])
+    );
   }
 
-  async function calculateWinner() {
-    const playersSnap = await get(ref(db, "rooms/" + currentRoom + "/players"));
-    const players = playersSnap.val();
+  async function hitungPemenang() {
+    const snap = await get(ref(db, `rooms/${currentRoom}/players`));
+    const players = snap.val();
     const uids = Object.keys(players);
 
-    let best = -1;
-    const winnerUids = [];
-    const values = {};
+    let terbaik = -1;
+    const winners = [];
 
+    const nilai = {};
     uids.forEach(uid => {
-      const v = bestValue(players[uid].cards);
-      values[uid] = v;
-      if (v > best) best = v;
+      nilai[uid] = nilaiTerbaik(players[uid].cards);
+      if (nilai[uid] > terbaik) terbaik = nilai[uid];
     });
 
     uids.forEach(uid => {
-      if (values[uid] === best) winnerUids.push(uid);
+      if (nilai[uid] === terbaik) winners.push(uid);
     });
 
-    // total pot
     let pot = 0;
-    uids.forEach(uid => pot += players[uid].bet || 0);
+    uids.forEach(uid => pot += players[uid].bet);
 
-    const perWinner = Math.floor(pot / winnerUids.length);
+    const hadiah = Math.floor(pot / winners.length);
 
-    // update poin semua pemain
     for (let uid of uids) {
       const userRef = ref(db, "users/" + uid);
       const snap = await get(userRef);
-      let cur = snap.val().points;
+      let pts = snap.val().points;
 
-      if (winnerUids.includes(uid)) {
-        cur += perWinner;
-      } else {
-        cur -= players[uid].bet || 0;
-      }
-      await update(userRef, { points: cur });
+      if (winners.includes(uid)) pts += hadiah;
+      else pts -= players[uid].bet;
+
+      await update(userRef, { points: pts });
     }
 
-    // reset bet
-    for (let uid of uids) {
-      await update(ref(db, "rooms/" + currentRoom + "/players/" + uid), {
-        bet: 0
-      });
-    }
+    for (let uid of uids)
+      await update(ref(db, `rooms/${currentRoom}/players/${uid}`), { bet: 0 });
 
-    await refreshMyPoints();
-    alert("Pemenang nilai tertinggi: " + best + " (jumlah pemenang: " + winnerUids.length + ")");
     betStatus.innerText = "Belum bertaruh";
+    await refreshPoints();
+    alert("Pemenang (nilai tertinggi " + terbaik + "): " + winners.length + " pemain");
   }
 
-  // KARTU RANDOM
   function randomCard() {
-    const a = Math.floor(Math.random() * 7);
-    const b = Math.floor(Math.random() * 7);
-    return `${a}|${b}`;
+    return `${Math.floor(Math.random() * 7)}|${Math.floor(Math.random() * 7)}`;
   }
 
   function displayMyCards(cards) {
@@ -377,5 +366,6 @@
     });
   }
 </script>
+
 </body>
 </html>
