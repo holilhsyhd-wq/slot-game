@@ -1,0 +1,88 @@
+body {
+  background: #0d0f14;
+  color: #fff;
+  font-family: Arial, sans-serif;
+}
+
+.hidden {
+  display: none;
+}
+
+.center-box {
+  text-align: center;
+  margin-top: 80px;
+}
+
+button {
+  padding: 10px 20px;
+  margin: 8px;
+  border: none;
+  border-radius: 6px;
+  background: #3a8bfd;
+  color: white;
+  cursor: pointer;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+.section {
+  margin: 15px auto;
+  max-width: 900px;
+  background: #151922;
+  padding: 15px;
+  border-radius: 10px;
+}
+
+.layout {
+  display: flex;
+  gap: 15px;
+}
+
+.col {
+  flex: 1;
+}
+
+#chatBox {
+  height: 250px;
+  background: #10131a;
+  padding: 10px;
+  border-radius: 8px;
+  overflow-y: auto;
+  font-size: 14px;
+}
+
+input {
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #333;
+  margin: 4px 0;
+  width: 90%;
+  background: #11141b;
+  color: #fff;
+}
+
+#playerList {
+  list-style: none;
+  padding-left: 0;
+  font-size: 14px;
+}
+
+#playerList li {
+  margin-bottom: 4px;
+}
+
+#cardsArea {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.card-tile {
+  background: #202635;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
