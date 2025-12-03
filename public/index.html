@@ -7,11 +7,28 @@
 </head>
 <body>
 
-<div id="loginBox" class="center-box">
+<!-- AUTH BOX -->
+<div id="authBox" class="center-box">
   <h1>QiuQiu Mabar</h1>
-  <button id="loginBtn">Login dengan Google</button>
+
+  <div class="auth-section">
+    <h3>Daftar Akun</h3>
+    <input id="regEmail" placeholder="Email (Gmail)">
+    <input id="regUsername" placeholder="Username">
+    <input id="regPhone" placeholder="Nomor HP">
+    <input id="regPassword" type="password" placeholder="Password">
+    <button id="registerBtn">Daftar</button>
+  </div>
+
+  <div class="auth-section">
+    <h3>Login</h3>
+    <input id="logUsername" placeholder="Username">
+    <input id="logPassword" type="password" placeholder="Password">
+    <button id="loginBtn">Login</button>
+  </div>
 </div>
 
+<!-- GAME BOX -->
 <div id="gameBox" class="hidden">
   <h2>QiuQiu Mabar</h2>
   <p id="userInfo"></p>
@@ -19,7 +36,7 @@
 
   <div class="section">
     <h3>Room</h3>
-    <input id="roomIdInput" placeholder="ID room">
+    <input id="roomIdInput" placeholder="ID room (misal: abc123)">
     <button id="createRoomBtn">Buat Room</button>
     <button id="joinRoomBtn">Join Room</button>
     <p>Room aktif: <span id="currentRoomText">-</span></p>
@@ -32,11 +49,12 @@
     </div>
 
     <div class="col">
-      <h3>Taruhan</h3>
+      <h3>Taruhan & Kartu</h3>
       <input id="betInput" type="number" min="10" placeholder="Jumlah taruhan">
       <button id="betBtn">Pasang Taruhan</button>
       <p id="betStatus">Belum bertaruh</p>
       <button id="startRoundBtn">Mulai Ronde</button>
+
       <h4>Kartumu</h4>
       <div id="cardsArea"></div>
     </div>
@@ -52,20 +70,14 @@
 
 <!-- SCRIPT UTAMA -->
 <script type="module">
-  // ========================================
-  // FIREBASE
-  // ========================================
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-  import { 
-    getDatabase, ref, set, update, get, push, onValue 
+  import {
+    getDatabase, ref, set, get, update, push, onValue
   } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-  import {
-    getAuth, GoogleAuthProvider,
-    signInWithRedirect, getRedirectResult,
-    onAuthStateChanged
-  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-
+  // ==========================
+  // KONFIGURASI FIREBASE
+  // ==========================
   const firebaseConfig = {
     apiKey: "AIzaSyD0-qqQiuQiuGameKeyXz123",
     authDomain: "qiuqiu-mabar.firebaseapp.com",
@@ -78,96 +90,151 @@
 
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
-  const auth = getAuth(app);
-  const provider = new GoogleAuthProvider();
 
-  // ========================================
+  // ==========================
   // ELEMENT DOM
-  // ========================================
-  const loginBox = document.getElementById("loginBox");
+  // ==========================
+  const authBox = document.getElementById("authBox");
   const gameBox = document.getElementById("gameBox");
+
+  const regEmail = document.getElementById("regEmail");
+  const regUsername = document.getElementById("regUsername");
+  const regPhone = document.getElementById("regPhone");
+  const regPassword = document.getElementById("regPassword");
+  const registerBtn = document.getElementById("registerBtn");
+
+  const logUsername = document.getElementById("logUsername");
+  const logPassword = document.getElementById("logPassword");
   const loginBtn = document.getElementById("loginBtn");
+
   const userInfo = document.getElementById("userInfo");
   const pointsText = document.getElementById("pointsText");
+
   const roomIdInput = document.getElementById("roomIdInput");
   const createRoomBtn = document.getElementById("createRoomBtn");
   const joinRoomBtn = document.getElementById("joinRoomBtn");
   const currentRoomText = document.getElementById("currentRoomText");
+
   const playerList = document.getElementById("playerList");
   const betInput = document.getElementById("betInput");
   const betBtn = document.getElementById("betBtn");
   const betStatus = document.getElementById("betStatus");
   const startRoundBtn = document.getElementById("startRoundBtn");
   const cardsArea = document.getElementById("cardsArea");
+
   const chatBox = document.getElementById("chatBox");
   const chatInput = document.getElementById("chatInput");
   const sendChatBtn = document.getElementById("sendChatBtn");
 
-  let currentUser = null;
+  // user yang sedang login
+  let currentUser = null; // {username, email, phone, points}
   let currentRoom = null;
 
-  // ========================================
-  // LOGIN GOOGLE (REDIRECT – 100% ANTI MENTAL)
-  // ========================================
-  loginBtn.onclick = () => {
-    signInWithRedirect(auth, provider);
+  // ==========================
+  // REGISTER
+  // ==========================
+  registerBtn.onclick = async () => {
+    const email = regEmail.value.trim();
+    const username = regUsername.value.trim();
+    const phone = regPhone.value.trim();
+    const password = regPassword.value.trim();
+
+    if (!email || !username || !phone || !password) {
+      alert("Semua data harus diisi.");
+      return;
+    }
+    if (!email.includes("@")) {
+      alert("Email tidak valid.");
+      return;
+    }
+    if (username.includes(" ")) {
+      alert("Username tidak boleh pakai spasi.");
+      return;
+    }
+
+    const userRef = ref(db, "users/" + username);
+    const snap = await get(userRef);
+    if (snap.exists()) {
+      alert("Username sudah dipakai.");
+      return;
+    }
+
+    const newUser = {
+      username,
+      email,
+      phone,
+      password, // NOTE: plain text, cuma buat game. Jangan dipakai buat hal serius.
+      points: 1000
+    };
+
+    await set(userRef, newUser);
+
+    currentUser = newUser;
+    masukGame();
   };
 
-  getRedirectResult(auth).then(async (result) => {
-    if (result) {
-      currentUser = result.user;
-      await afterLogin(currentUser);
-    }
-  });
+  // ==========================
+  // LOGIN
+  // ==========================
+  loginBtn.onclick = async () => {
+    const username = logUsername.value.trim();
+    const password = logPassword.value.trim();
 
-  onAuthStateChanged(auth, async (user) => {
-    if (user && !currentUser) {
-      currentUser = user;
-      await afterLogin(user);
+    if (!username || !password) {
+      alert("Isi username dan password.");
+      return;
     }
-  });
 
-  async function afterLogin(user) {
-    const userRef = ref(db, "users/" + user.uid);
+    const userRef = ref(db, "users/" + username);
     const snap = await get(userRef);
-
     if (!snap.exists()) {
-      await set(userRef, {
-        uid: user.uid,
-        name: user.displayName,
-        points: 1000
-      });
+      alert("Akun tidak ditemukan.");
+      return;
     }
 
-    loginBox.classList.add("hidden");
+    const data = snap.val();
+    if (data.password !== password) {
+      alert("Password salah.");
+      return;
+    }
+
+    currentUser = data;
+    masukGame();
+  };
+
+  // ==========================
+  // MASUK KE GAME
+  // ==========================
+  async function masukGame() {
+    authBox.classList.add("hidden");
     gameBox.classList.remove("hidden");
 
-    const data = (await get(userRef)).val();
-    userInfo.innerText = "Login sebagai: " + data.name;
-    pointsText.innerText = "Poin: " + data.points;
-  }
+    const snap = await get(ref(db, "users/" + currentUser.username));
+    const data = snap.val();
+    currentUser.points = data.points;
 
-  async function getMyPoints() {
-    const snap = await get(ref(db, "users/" + currentUser.uid));
-    return snap.val().points;
+    userInfo.innerText = "Login sebagai: " + currentUser.username;
+    pointsText.innerText = "Poin: " + currentUser.points;
   }
 
   async function refreshPoints() {
-    pointsText.innerText = "Poin: " + await getMyPoints();
+    const snap = await get(ref(db, "users/" + currentUser.username));
+    currentUser.points = snap.val().points;
+    pointsText.innerText = "Poin: " + currentUser.points;
   }
 
-  // ========================================
-  // BUAT ROOM
-  // ========================================
+  // ==========================
+  // ROOM
+  // ==========================
   createRoomBtn.onclick = async () => {
-    const id = Math.random().toString(36).substring(2, 8);
-    currentRoom = id;
-    currentRoomText.innerText = id;
+    const roomId = Math.random().toString(36).substring(2, 8);
+    currentRoom = roomId;
+    currentRoomText.innerText = roomId;
 
-    await set(ref(db, "rooms/" + id), {
+    await set(ref(db, "rooms/" + roomId), {
       players: {
-        [currentUser.uid]: {
-          name: currentUser.displayName,
+        [currentUser.username]: {
+          name: currentUser.username,
           bet: 0,
           cards: []
         }
@@ -178,22 +245,26 @@
     listenRoom();
   };
 
-  // ========================================
-  // JOIN ROOM
-  // ========================================
   joinRoomBtn.onclick = async () => {
-    const id = roomIdInput.value.trim();
-    if (!id) return alert("Isi ID room dulu.");
+    const roomId = roomIdInput.value.trim();
+    if (!roomId) {
+      alert("Isi ID room dulu.");
+      return;
+    }
 
-    const snap = await get(ref(db, "rooms/" + id));
-    if (!snap.exists()) return alert("Room tidak ditemukan.");
+    const roomRef = ref(db, "rooms/" + roomId);
+    const snap = await get(roomRef);
+    if (!snap.exists()) {
+      alert("Room tidak ditemukan.");
+      return;
+    }
 
-    currentRoom = id;
-    currentRoomText.innerText = id;
+    currentRoom = roomId;
+    currentRoomText.innerText = roomId;
 
-    await update(ref(db, "rooms/" + id + "/players"), {
-      [currentUser.uid]: {
-        name: currentUser.displayName,
+    await update(ref(db, "rooms/" + roomId + "/players"), {
+      [currentUser.username]: {
+        name: currentUser.username,
         bet: 0,
         cards: []
       }
@@ -202,12 +273,13 @@
     listenRoom();
   };
 
-  // ========================================
-  // LISTEN ROOM (PEMAIN + CHAT)
-  // ========================================
+  // ==========================
+  // LISTEN ROOM
+  // ==========================
   function listenRoom() {
     if (!currentRoom) return;
 
+    // pemain
     onValue(ref(db, "rooms/" + currentRoom + "/players"), snap => {
       const players = snap.val() || {};
       playerList.innerHTML = "";
@@ -218,11 +290,12 @@
         playerList.appendChild(li);
       });
 
-      if (players[currentUser.uid]?.cards) {
-        displayMyCards(players[currentUser.uid].cards);
+      if (players[currentUser.username]?.cards) {
+        tampilkanKartu(players[currentUser.username].cards);
       }
     });
 
+    // chat
     onValue(ref(db, "rooms/" + currentRoom + "/chat"), snap => {
       const logs = snap.val() || [];
       chatBox.innerHTML = "";
@@ -235,46 +308,65 @@
     });
   }
 
+  // ==========================
+  // CHAT
+  // ==========================
   sendChatBtn.onclick = async () => {
     const text = chatInput.value.trim();
     if (!text || !currentRoom) return;
 
     await push(ref(db, "rooms/" + currentRoom + "/chat"), {
-      sender: currentUser.displayName,
+      sender: currentUser.username,
       text
     });
+
     chatInput.value = "";
   };
 
-  // ========================================
+  // ==========================
   // TARUHAN & RONDE
-  // ========================================
+  // ==========================
   betBtn.onclick = async () => {
+    if (!currentRoom) return alert("Belum ada room.");
+
     const bet = parseInt(betInput.value);
-    if (!bet || bet < 10) return alert("Minimal 10 poin.");
+    if (!bet || bet < 10) {
+      alert("Minimal taruhan 10 poin.");
+      return;
+    }
 
-    const pts = await getMyPoints();
-    if (bet > pts) return alert("Poin tidak cukup.");
+    const snap = await get(ref(db, "users/" + currentUser.username));
+    const pts = snap.val().points;
+    if (bet > pts) {
+      alert("Poin tidak cukup.");
+      return;
+    }
 
-    await update(ref(db, `rooms/${currentRoom}/players/${currentUser.uid}`), {
-      bet: bet
+    await update(ref(db, "rooms/" + currentRoom + "/players/" + currentUser.username), {
+      bet
     });
 
     betStatus.innerText = "Taruhan kamu: " + bet;
   };
 
   startRoundBtn.onclick = async () => {
-    const snap = await get(ref(db, `rooms/${currentRoom}/players`));
+    if (!currentRoom) return;
+
+    const snap = await get(ref(db, "rooms/" + currentRoom + "/players"));
     const players = snap.val();
     const uids = Object.keys(players);
 
-    for (let uid of uids)
-      if (!players[uid].bet) return alert("Semua pemain harus bertaruh.");
+    for (let u of uids) {
+      if (!players[u].bet || players[u].bet <= 0) {
+        alert("Semua pemain harus bertaruh.");
+        return;
+      }
+    }
 
-    const upd = {};
-    uids.forEach(uid => {
-      upd[uid] = {
-        ...players[uid],
+    const updates = {};
+    uids.forEach(u => {
+      updates[u] = {
+        ...players[u],
         cards: [
           randomCard(),
           randomCard(),
@@ -284,15 +376,14 @@
       };
     });
 
-    await update(ref(db, `rooms/${currentRoom}/players`), upd);
+    await update(ref(db, "rooms/" + currentRoom + "/players"), updates);
 
     setTimeout(() => hitungPemenang(), 1500);
   };
 
-  // ========================================
-  // HITUNG MENANG QIUQIU
-  // ========================================
-
+  // ==========================
+  // LOGIKA QIUQIU
+  // ==========================
   function nilaiPair(c1, c2) {
     const [a1, a2] = c1.split("|").map(Number);
     const [b1, b2] = c2.split("|").map(Number);
@@ -311,52 +402,59 @@
   }
 
   async function hitungPemenang() {
-    const snap = await get(ref(db, `rooms/${currentRoom}/players`));
+    const snap = await get(ref(db, "rooms/" + currentRoom + "/players"));
     const players = snap.val();
     const uids = Object.keys(players);
 
-    let terbaik = -1;
+    let best = -1;
     const winners = [];
 
     const nilai = {};
-    uids.forEach(uid => {
-      nilai[uid] = nilaiTerbaik(players[uid].cards);
-      if (nilai[uid] > terbaik) terbaik = nilai[uid];
+    uids.forEach(u => {
+      nilai[u] = nilaiTerbaik(players[u].cards);
+      if (nilai[u] > best) best = nilai[u];
     });
 
-    uids.forEach(uid => {
-      if (nilai[uid] === terbaik) winners.push(uid);
+    uids.forEach(u => {
+      if (nilai[u] === best) winners.push(u);
     });
 
     let pot = 0;
-    uids.forEach(uid => pot += players[uid].bet);
+    uids.forEach(u => pot += players[u].bet || 0);
 
-    const hadiah = Math.floor(pot / winners.length);
+    const share = Math.floor(pot / winners.length);
 
-    for (let uid of uids) {
-      const userRef = ref(db, "users/" + uid);
-      const snap = await get(userRef);
-      let pts = snap.val().points;
+    // update poin semua pemain
+    for (let u of uids) {
+      const userRef = ref(db, "users/" + u);
+      const s = await get(userRef);
+      let pts = s.val().points;
 
-      if (winners.includes(uid)) pts += hadiah;
-      else pts -= players[uid].bet;
+      if (winners.includes(u)) pts += share;
+      else pts -= players[u].bet || 0;
 
       await update(userRef, { points: pts });
     }
 
-    for (let uid of uids)
-      await update(ref(db, `rooms/${currentRoom}/players/${uid}`), { bet: 0 });
+    // reset taruhan
+    for (let u of uids) {
+      await update(ref(db, "rooms/" + currentRoom + "/players/" + u), {
+        bet: 0
+      });
+    }
 
     betStatus.innerText = "Belum bertaruh";
     await refreshPoints();
-    alert("Pemenang (nilai tertinggi " + terbaik + "): " + winners.length + " pemain");
+    alert("Pemenang nilai " + best + " (" + winners.length + " orang)");
   }
 
   function randomCard() {
-    return `${Math.floor(Math.random() * 7)}|${Math.floor(Math.random() * 7)}`;
+    const a = Math.floor(Math.random() * 7);
+    const b = Math.floor(Math.random() * 7);
+    return `${a}|${b}`;
   }
 
-  function displayMyCards(cards) {
+  function tampilkanKartu(cards) {
     cardsArea.innerHTML = "";
     cards.forEach(c => {
       const div = document.createElement("div");
